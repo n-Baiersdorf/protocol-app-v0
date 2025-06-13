@@ -255,7 +255,8 @@ Entwicklung einer LLM-basierten Webanwendung zur automatisierten Erstellung von 
 - **Datenbank:** PostgreSQL oder MongoDB
 - **Containerisierung:** Docker für einfache Bereitstellung
 - **API-Design:** RESTful oder GraphQL
-- **LLM-Integration:** Ollama & Llamaindex für RAG
+- **LLM-Integration:** Ollama
+- **UPLOAD-LLM-Management:** RAG mit Llamaindex
 
 #### 4.1.2 Modularität
 - **Microservices-Architektur:** Unabhängige Services für verschiedene Funktionen

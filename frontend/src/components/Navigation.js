@@ -5,10 +5,10 @@ const Navigation = () => {
   const location = useLocation();
   
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: '📊' },
-    { path: '/upload', label: 'Upload', icon: '📤' },
-    { path: '/protocols', label: 'Protokolle', icon: '📄' },
-    { path: '/settings', label: 'Einstellungen', icon: '⚙️' }
+    { name: 'Dashboard', path: '/', icon: '🏠' },
+    { name: 'Protokoll-Erstellen', path: '/create', icon: '✍️' },
+    { name: 'Protokolle', path: '/protocols', icon: '📋' },
+    { name: 'Einstellungen', path: '/settings', icon: '⚙️' }
   ];
 
   return (
@@ -26,7 +26,7 @@ const Navigation = () => {
               }`}
             >
               <span className="mr-2">{item.icon}</span>
-              {item.label}
+              {item.name}
             </Link>
           ))}
         </div>

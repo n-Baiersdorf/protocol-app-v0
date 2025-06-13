@@ -52,34 +52,41 @@ class LaTeXService:
         Returns:
             Dict mit Pfaden zu LaTeX- und PDF-Dateien
         """
+        # Dokument generieren
         try:
-            # Dateinamen generieren
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"protocol_{protocol_id}_{timestamp}"
-            
-            # LaTeX-Dokument erstellen
             doc = self._create_latex_document(content)
             
             # LaTeX-Datei speichern
-            latex_path = self.output_folder / f"{filename}.tex"
-            doc.generate_tex(str(latex_path.with_suffix('')))
+            latex_filename = f"protocol_{protocol_id}"
+            timestamped_filename = f"protocol_{protocol_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            latex_path = self.output_folder / f"{latex_filename}.tex"
+            timestamped_path = self.output_folder / f"{timestamped_filename}.tex"
+            
+            # Beide Dateien erstellen (für Download + Archiv)
+            doc.generate_tex(str(latex_path))
+            doc.generate_tex(str(timestamped_path))
+            
+            logger.info(f"LaTeX-Dokument erstellt: {latex_path}")
             
             # PDF generieren
             pdf_path = self._compile_to_pdf(latex_path)
             
-            result = {
-                'latex_file': str(latex_path),
-                'pdf_file': str(pdf_path) if pdf_path else None,
-                'filename': filename,
-                'created_at': datetime.now().isoformat()
+            return {
+                'success': True,
+                'filename': latex_filename,
+                'latex_file': f"generated/{latex_filename}.tex",
+                'pdf_file': f"generated/{latex_filename}.pdf" if pdf_path and pdf_path.exists() else None,
+                'message': 'LaTeX-Dokument und PDF erfolgreich erstellt!' if pdf_path and pdf_path.exists() else 'LaTeX-Dokument erstellt, PDF-Generierung fehlgeschlagen'
             }
             
-            logger.info(f"Protokoll erfolgreich erstellt: {filename}")
-            return result
-            
         except Exception as e:
-            logger.error(f"Fehler bei Dokumenterstellung: {str(e)}")
-            raise
+            logger.error(f"LaTeX-Generierung fehlgeschlagen: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message': 'Fehler bei der LaTeX-Generierung'
+            }
     
     def _create_latex_document(self, content: str) -> Document:
         """Erstellt das LaTeX-Dokument"""
@@ -222,39 +229,64 @@ class LaTeXService:
         """Kompiliert LaTeX zu PDF"""
         
         try:
-            # pdflatex ausführen (nur einmal für MVP, zweimal wenn nötig)
+            logger.info(f"Starte PDF-Kompilierung für: {latex_path}")
+            
+            # pdflatex ausführen mit ausführlicher Fehlerbehandlung
             result = subprocess.run([
                 'pdflatex',
                 '-interaction=nonstopmode',
+                '-halt-on-error',
                 '-output-directory', str(latex_path.parent),
                 str(latex_path)
             ], 
-            capture_output=True, text=True, cwd=latex_path.parent)
+            capture_output=True, text=True, cwd=latex_path.parent, timeout=30)
             
             # PDF-Pfad bestimmen
             pdf_path = latex_path.with_suffix('.pdf')
             
-            # Prüfen ob PDF existiert (auch bei LaTeX-Warnungen)
+            logger.info(f"LaTeX Return Code: {result.returncode}")
+            logger.info(f"LaTeX STDOUT: {result.stdout[-500:] if result.stdout else 'Kein STDOUT'}")
+            
+            if result.stderr:
+                logger.warning(f"LaTeX STDERR: {result.stderr[-500:]}")
+            
+            # Prüfen ob PDF existiert (auch bei Warnings)
             if pdf_path.exists():
-                logger.info(f"PDF erfolgreich erstellt: {pdf_path} ({pdf_path.stat().st_size} bytes)")
+                file_size = pdf_path.stat().st_size
+                logger.info(f"✅ PDF erfolgreich erstellt: {pdf_path} ({file_size} bytes)")
                 
-                # Zweiter Lauf für bessere Referenzen (optional)
-                if result.returncode == 0:
-                    subprocess.run([
-                        'pdflatex',
-                        '-interaction=nonstopmode',
-                        '-output-directory', str(latex_path.parent),
-                        str(latex_path)
-                    ], capture_output=True, cwd=latex_path.parent)
+                # Bei Erfolg zweiten Lauf für bessere Referenzen
+                if result.returncode == 0 and file_size > 1000:  # Mindestgröße prüfen
+                    try:
+                        subprocess.run([
+                            'pdflatex',
+                            '-interaction=nonstopmode',
+                            '-output-directory', str(latex_path.parent),
+                            str(latex_path)
+                        ], capture_output=True, cwd=latex_path.parent, timeout=15)
+                        logger.info("Zweiter LaTeX-Lauf abgeschlossen")
+                    except:
+                        pass  # Zweiter Lauf ist optional
                 
                 return pdf_path
             else:
-                logger.error(f"PDF-Datei wurde nicht erstellt. Return code: {result.returncode}")
-                logger.error(f"LaTeX stderr: {result.stderr}")
+                logger.error(f"❌ PDF-Datei wurde nicht erstellt!")
+                logger.error(f"Expected PDF path: {pdf_path}")
+                logger.error(f"Working directory files: {list(latex_path.parent.glob('*'))}")
+                
+                # Versuche alternativen PDF-Namen zu finden
+                for pdf_file in latex_path.parent.glob('*.pdf'):
+                    logger.info(f"Gefundene PDF-Datei: {pdf_file}")
+                    if pdf_file.stem == latex_path.stem:
+                        return pdf_file
+                
                 return None
                 
+        except subprocess.TimeoutExpired:
+            logger.error("PDF-Kompilierung Timeout (30s)")
+            return None
         except Exception as e:
-            logger.error(f"PDF-Kompilierung fehlgeschlagen: {str(e)}")
+            logger.error(f"PDF-Kompilierung Ausnahme: {str(e)}")
             return None
     
     def create_custom_template(self, template_name: str, template_content: str) -> bool:
